@@ -216,17 +216,30 @@ static int hud_top(void) {
 static void draw_hud(uint32_t *out, int width, int height, int hud, const uint32_t *native) {
     const uint32_t black = 0xFF000000u, backdrop = cyc_render_color(0);
     int hx0 = (width - 256) / 2;
-    for (int y = hud; y < height; y++) {
+    /* Lines between the split and the status bar's white top border are
+     * blank by design; whatever the late IRQ leaked into them is dropped. */
+    int art = hud;
+    for (; art < height && art < hud + 8; art++) {
+        int white = 0;
+        for (int x = 16; x < 256; x++) white += (native[art * 256 + x] & 0xFFFFFFu) == 0xFFFFFFu;
+        if (white >= 16) break;
+    }
+    if (art >= hud + 8) art = hud;
+    for (int y = hud; y < art; y++)
+        for (int x = 0; x < width; x++) out[y * width + x] = black;
+    for (int y = art; y < height; y++) {
         uint32_t *line = out + y * width;
         const uint32_t *src = native + y * 256;
         /* The switch line can come out partly drawn (IRQ timing varies by a few
          * dots), so the first lines count as blank if they hold nothing but
          * backdrop and black. */
+        /* The status bar's artwork starts at native column 16; the IRQ lands a
+         * few dots into its first lines, leaking playfield pixels left of it. */
         bool blank = true;
-        for (int x = 8; x < 256 && blank; x++)
+        for (int x = 16; x < 256 && blank; x++)
             blank = src[x] == backdrop || (y < hud + 3 && (src[x] & 0xFFFFFFu) == 0);
         for (int x = 0; x < width; x++) line[x] = black;
-        if (!blank) memcpy(line + hx0 + 8, src + 8, 248 * sizeof(uint32_t));
+        if (!blank) memcpy(line + hx0 + 16, src + 16, 240 * sizeof(uint32_t));
     }
 }
 
