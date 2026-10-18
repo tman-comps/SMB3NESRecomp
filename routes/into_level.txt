@@ -1,0 +1,26 @@
+# Headless input route: <frame> <buttons>   ('-' = release all)
+# Title -> 1 player -> World 1 map -> right, up to 1-1 -> enter -> run right, jumping.
+300 START
+306 -
+480 START
+486 -
+820 RIGHT
+840 -
+900 UP
+920 -
+980 A
+986 -
+1150 RIGHT+B
+1200 RIGHT+B+A
+1225 RIGHT+B
+1300 RIGHT+B+A
+1325 RIGHT+B
+1400 RIGHT+B+A
+1425 RIGHT+B
+1500 RIGHT+B+A
+1525 RIGHT+B
+1600 RIGHT+B+A
+1625 RIGHT+B
+1700 RIGHT+B+A
+1725 RIGHT+B
+1800 -

@@ -1,0 +1,10 @@
+# ROMs are never committed
+*.nes
+*.fds
+*.zip
+
+build*/
+saves/
+*.cycstate
+*.state
+config.ini

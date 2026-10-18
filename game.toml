@@ -1,0 +1,10 @@
+# Super Mario Bros. 3 (USA) -- nesrecomp cycle backend configuration.
+# Mapper, banking and dispatch are read from the iNES header; add
+# extra_func / extra_label / inline_dispatch entries here as coverage
+# work finds them (see nesrecomp/README.md for the schema).
+[game]
+output_prefix = "smb3-cycle"
+cycle_accurate = true
+# Interpreter misses from routes/into_level.txt (title, map, 1-1). Regenerate:
+#   SuperMarioBros3Recomp baserom.nes --frames 1800 --input routes/into_level.txt --miss-log cyc_seeds.txt
+cycle_seed_file = "cyc_seeds.txt"

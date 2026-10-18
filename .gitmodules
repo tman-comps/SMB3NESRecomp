@@ -1,0 +1,9 @@
+[submodule "nesrecomp"]
+	path = nesrecomp
+	url = https://github.com/mstan/nesrecomp.git
+[submodule "recomp-ui"]
+	path = recomp-ui
+	url = https://github.com/mstan/recomp-ui.git
+[submodule "smb3-disassembly"]
+	path = smb3-disassembly
+	url = https://github.com/captainsouthbird/smb3.git
