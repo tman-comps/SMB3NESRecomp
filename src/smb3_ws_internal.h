@@ -10,6 +10,9 @@ typedef struct {
     int  view_left;   /* world X of canvas column 0 */
 } Smb3WsView;
 
+/* Start a picture's sprites: draw them in priority order afterwards (first
+ * opaque pixel wins, as on the PPU). */
+void smb3_ws_sprites_begin(int width);
 /* One sprite (8x8 or 8x16 as the frame used), through the game's own CHR
  * bank selections; `opaque` (width x 240) decides behind-background pixels. */
 void smb3_ws_draw_sprite(uint32_t *out, int width, int height, int x, int y, uint8_t tile, uint8_t attr,

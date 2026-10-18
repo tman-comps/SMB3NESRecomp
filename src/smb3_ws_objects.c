@@ -147,9 +147,10 @@ void smb3_ws_objects_frame_end(const Smb3WsView *v) {
 }
 
 void smb3_ws_objects_draw(uint32_t *out, int width, int height, int view_left, const uint8_t *opaque) {
-    for (int slot = OBJECT_SLOTS - 1; slot >= 0; slot--) {
+    /* Priority order: each packet keeps the object's own Sprite_RAM order. */
+    for (int slot = 0; slot < OBJECT_SLOTS; slot++) {
         const Packet *pk = &s_packets[slot];
-        for (int i = pk->count - 1; i >= 0; i--) {
+        for (int i = 0; i < pk->count; i++) {
             const HostSprite *s = &pk->spr[i];
             smb3_ws_draw_sprite(out, width, height, s->world_x - view_left, s->y + 1, s->tile, s->attr, opaque);
         }

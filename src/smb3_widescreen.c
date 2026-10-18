@@ -110,7 +110,15 @@ static void decode_tiles(void) {
         }
 }
 
-/* An 8-pixel-wide sprite row block of `rows` lines from pattern `pat`. */
+/* Sprite pixels already decided this picture. The PPU lets the first opaque
+ * sprite pixel (lowest OAM index) win even when that sprite is behind the
+ * background; SMB3 relies on it, masking a Piranha's stem with behind-BG
+ * sprites over the pipe. Sprites are therefore drawn in priority order. */
+static uint8_t s_claim[CYC_VIDEO_MAX_WIDTH * 240];
+
+void smb3_ws_sprites_begin(int width) { memset(s_claim, 0, (size_t)width * 240); }
+
+/* An 8x8 block of sprite pixels from pattern `pat`, `rows_from` lines down. */
 static void sprite_tile(uint32_t *out, int width, int height, int x, int y, uint16_t pat, int rows_from, int palette,
                         bool hflip, bool vflip, bool behind, const uint8_t *opaque) {
     for (int r = 0; r < 8; r++) {
@@ -119,12 +127,13 @@ static void sprite_tile(uint32_t *out, int width, int height, int x, int y, uint
         int pr = vflip ? 7 - r : r;
         uint8_t lo = chr_byte((uint16_t)(pat + pr)), hi = chr_byte((uint16_t)(pat + pr + 8));
         for (int c = 0; c < 8; c++) {
-            int sx = x + c;
-            if (sx < 0 || sx >= width) continue;
+            int sx = x + c, i = sy * width + sx;
+            if (sx < 0 || sx >= width || s_claim[i]) continue;
             int b = hflip ? c : 7 - c;
             int p = ((lo >> b) & 1) | (((hi >> b) & 1) << 1);
-            if (!p || (behind && opaque[sy * width + sx])) continue;
-            out[sy * width + sx] = cyc_render_color(16 + palette * 4 + p);
+            if (!p) continue;
+            s_claim[i] = 1;
+            if (!(behind && opaque[i])) out[i] = cyc_render_color(16 + palette * 4 + p);
         }
     }
 }
@@ -210,8 +219,12 @@ static void draw_hud(uint32_t *out, int width, int height, int hud, const uint32
     for (int y = hud; y < height; y++) {
         uint32_t *line = out + y * width;
         const uint32_t *src = native + y * 256;
+        /* The switch line can come out partly drawn (IRQ timing varies by a few
+         * dots), so the first lines count as blank if they hold nothing but
+         * backdrop and black. */
         bool blank = true;
-        for (int x = 8; x < 256 && blank; x++) blank = src[x] == backdrop;
+        for (int x = 8; x < 256 && blank; x++)
+            blank = src[x] == backdrop || (y < hud + 3 && (src[x] & 0xFFFFFFu) == 0);
         for (int x = 0; x < width; x++) line[x] = black;
         if (!blank) memcpy(line + hx0 + 8, src + 8, 248 * sizeof(uint32_t));
     }
@@ -241,6 +254,33 @@ static uint32_t title_scenery(uint32_t c, uint32_t backdrop) {
     int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
     return (b > r + 40 && b > g + 40) ? backdrop : c;
 }
+/* The "MARIO BROS." line of the logo reaches into the mirror window. */
+static bool title_logo(int col, int y) { return y >= 58 && y < 112 && col >= 36 && col <= 220; }
+
+static bool line_black(const uint32_t *src) {
+    for (int x = 8; x < 256; x++)
+        if (src[x] & 0xFFFFFFu) return false;
+    return true;
+}
+static bool lines_equal(const uint32_t *a, const uint32_t *b) {
+    return !memcmp(a + 8, b + 8, 248 * sizeof(uint32_t));
+}
+/* The stage's last rows are black below the checkered floor (overscan on a
+ * CRT); wide, that reads as a bar. Continue the floor with its own vertical
+ * period instead. */
+static void title_floor_to_bottom(uint32_t *out, int width, int height, const uint32_t *native) {
+    int last = height - 1;
+    while (last > 180 && line_black(native + last * 256)) last--;
+    if (last == height - 1 || last <= 180) return;
+    for (int p = 8; p <= 40; p++) {
+        bool ok = true;
+        for (int k = 0; k < p && ok; k++) ok = lines_equal(native + (last - k) * 256, native + (last - k - p) * 256);
+        if (!ok) continue;
+        for (int y = last + 1; y < height; y++) memcpy(out + y * width, out + (y - p) * width, (size_t)width * 4);
+        return;
+    }
+}
+
 static int compose_title(uint32_t *out, int width, int height, int x0, const uint32_t *native) {
     static uint32_t bg[256 * 240];
     const uint32_t *scenery = cyc_render_background(bg) ? bg : native;
@@ -248,21 +288,25 @@ static int compose_title(uint32_t *out, int width, int height, int x0, const uin
     for (int y = 0; y < height; y++) {
         const uint32_t *src = native + y * 256, *bgl = scenery + y * 256;
         uint32_t *line = out + y * width;
-        int pl = edge_period(src, 8, 1), pr = edge_period(src, 255, -1);
+        /* Only the curtain and the floor tile outward; a hill's base repeats
+         * too, but tiling it would lay a flat band across the margin. */
+        bool band = y < 40 || y >= 190;
+        int pl = band ? edge_period(src, 8, 1) : 0, pr = band ? edge_period(src, 255, -1) : 0;
         /* Native columns 0-7 are masked by the game; they continue the edge too. */
         int masked = (cyc_render_line_mask(y) & 0x02) ? 0 : 8;
         for (int x = 0; x < x0 + masked; x++) {
             int d = x0 + 8 - x; /* pixels left of native column 8 (1-based) */
             if (pl) line[x] = src[8 + (pl - d % pl) % pl];
-            else line[x] = d <= TITLE_MIRROR ? title_scenery(bgl[8 + d - 1], backdrop) : backdrop;
+            else line[x] = d <= TITLE_MIRROR && !title_logo(8 + d, y) ? title_scenery(bgl[8 + d], backdrop) : backdrop;
         }
         for (int x = masked; x < 256; x++) line[x0 + x] = src[x];
         for (int x = x0 + 256; x < width; x++) {
             int d = x - (x0 + 255); /* pixels right of native column 255 (1-based) */
             if (pr) line[x] = src[255 - (pr - d % pr) % pr];
-            else line[x] = d <= TITLE_MIRROR ? title_scenery(bgl[255 - d + 1], backdrop) : backdrop;
+            else line[x] = d <= TITLE_MIRROR && !title_logo(255 - d, y) ? title_scenery(bgl[255 - d], backdrop) : backdrop;
         }
     }
+    title_floor_to_bottom(out, width, height, native);
     return 1;
 }
 
@@ -317,7 +361,8 @@ static int compose(uint32_t *out, int width, int height, int native_x0, const ui
     /* The frame's own sprites in the two native edge strips the rebuilt
      * background replaced, then objects the game kept off its screen. */
     const uint8_t *oam = cyc_render_oam();
-    for (int i = 63; i >= 0; i--) {
+    smb3_ws_sprites_begin(width);
+    for (int i = 0; i < 64; i++) {
         const uint8_t *s = oam + i * 4;
         if (s[0] >= 0xEF || (s[3] >= 8 && s[3] < 241)) continue;
         smb3_ws_draw_sprite(out, width, height, x0 + s[3], s[0] + 1, s[1], s[2], s_opaque);
