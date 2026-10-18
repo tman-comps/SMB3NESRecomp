@@ -21,6 +21,7 @@
 #include "smb3_widescreen.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cyc_core.h"
@@ -34,6 +35,7 @@
 #define RAM_LEVEL_WIDTH      0x0022 /* screens - 1 */
 #define RAM_HORZ_SCROLL      0x00FD
 #define RAM_LEVEL_7VERTICAL  0x03EF
+#define RAM_UPDATE_SELECT    0x0100 /* $20 title/ending, $80 vertical, $C0 normal */
 #define RAM_PATTABLE_BANKSEL 0x0719 /* [0] BG $0000, [1] BG $0800 (1K bank numbers) */
 #define RAM_LEVEL_TILESET    0x070A /* 0 = world map */
 
@@ -49,7 +51,7 @@
 #define TILESET_COUNT 19
 
 static int  s_mode = NES_VIDEO_STOCK;
-static bool s_rom_ok, s_check;
+static bool s_rom_ok, s_check, s_raw;
 static uint8_t  s_opaque[CYC_VIDEO_MAX_WIDTH * 240];
 static uint8_t  s_pixels[256][8][8]; /* decoded BG tiles: 2-bit colour */
 static uint64_t s_frames, s_check_px, s_check_bad;
@@ -78,6 +80,9 @@ static const uint8_t *tile_layout(int tileset) {
     uint16_t ptr = (uint16_t)(rom30(at) | (rom30((uint16_t)(at + 1)) << 8));
     int bank = ptr >= 0xC000 ? rom30((uint16_t)(ROM_PAGE_C000_BY_TILESET + tileset))
                              : rom30((uint16_t)(ROM_PAGE_A000_BY_TILESET + tileset));
+    /* The map's page entry (11) is its runtime code; its layout, used while
+     * the map loads, is Tile_Layout_TS0 at the start of PRG012. */
+    if (tileset == 0) bank = 12;
     uint32_t off = (uint32_t)bank * 0x2000u + (ptr & 0x1FFFu);
     if (off + 1024 > hw_cart.prg_len) return NULL;
     return hw_cart.prg + off;
@@ -86,7 +91,16 @@ static const uint8_t *tile_layout(int tileset) {
 /* Background tiles through the playfield's banks. The status bar's IRQ swaps
  * the PPU's BG banks late in the frame, so the live mapping can't be used;
  * the game's own selections can. */
-static void decode_tiles(void) {
+static void decode_tiles(bool live) {
+    if (live) { /* no IRQ bank swap this frame: the PPU's mapping is the playfield's */
+        for (int t = 0; t < 256; t++)
+            for (int r = 0; r < 8; r++) {
+                uint8_t lo = cyc_render_chr((uint16_t)(t * 16 + r)), hi = cyc_render_chr((uint16_t)(t * 16 + r + 8));
+                for (int c = 0; c < 8; c++)
+                    s_pixels[t][r][c] = (uint8_t)(((lo >> (7 - c)) & 1) | (((hi >> (7 - c)) & 1) << 1));
+            }
+        return;
+    }
     uint8_t sel[2] = { ram(RAM_PATTABLE_BANKSEL), ram(RAM_PATTABLE_BANKSEL + 1) };
     for (int t = 0; t < 256; t++) {
         uint32_t base = ((uint32_t)(sel[t >> 7] & 0xFE) * 0x400u + (uint32_t)(t & 127) * 16u) % hw_cart.chr_len;
@@ -117,24 +131,84 @@ static int hud_top(void) {
     return 240;
 }
 
+/* Status bar centred on black (its own surround colour). The line where the
+ * IRQ switches to it renders backdrop only; wide, that reads as a stray band,
+ * so a backdrop-only line there is black too. */
+static void draw_hud(uint32_t *out, int width, int height, int hud, const uint32_t *native) {
+    const uint32_t black = 0xFF000000u, backdrop = cyc_render_color(0);
+    int hx0 = (width - 256) / 2;
+    for (int y = hud; y < height; y++) {
+        uint32_t *line = out + y * width;
+        const uint32_t *src = native + y * 256;
+        bool blank = true;
+        for (int x = 8; x < 256 && blank; x++) blank = src[x] == backdrop;
+        for (int x = 0; x < width; x++) line[x] = black;
+        if (!blank) memcpy(line + hx0 + 8, src + 8, 248 * sizeof(uint32_t));
+    }
+}
+
+/* Smallest period (8/16/32) with which the `span` pixels from `start` repeat. */
+static int edge_period(const uint32_t *src, int start, int dir) {
+    static const int periods[] = { 8, 16, 32 };
+    for (int k = 0; k < 3; k++) {
+        int p = periods[k];
+        bool ok = true;
+        for (int i = 0; i < 2 * p && ok; i++) ok = src[start + dir * i] == src[start + dir * (i + p)];
+        if (ok) return p;
+    }
+    return 0;
+}
+
+/* Title/ending: a fixed stage with no level behind it. Rows whose edges
+ * repeat (curtain, checkered floor) tile outward in phase; the rest take the
+ * backdrop, so scenery isn't smeared. */
+static int compose_title(uint32_t *out, int width, int height, int x0, const uint32_t *native) {
+    uint32_t backdrop = cyc_render_color(0);
+    for (int y = 0; y < height; y++) {
+        const uint32_t *src = native + y * 256;
+        uint32_t *line = out + y * width;
+        int pl = edge_period(src, 8, 1), pr = edge_period(src, 255, -1);
+        /* Native columns 0-7 are masked by the game; they continue the pattern too. */
+        int masked = (cyc_render_line_mask(y) & 0x02) ? 0 : 8;
+        for (int x = 0; x < x0 + masked; x++) {
+            int d = x0 + 8 - x; /* pixels left of native column 8 */
+            line[x] = pl ? src[8 + (pl - d % pl) % pl] : backdrop;
+        }
+        for (int x = masked; x < 256; x++) line[x0 + x] = src[x];
+        for (int x = x0 + 256; x < width; x++) {
+            int d = x - (x0 + 255); /* pixels right of native column 255 */
+            line[x] = pr ? src[255 - (pr - d % pr) % pr] : backdrop;
+        }
+    }
+    return 1;
+}
+
 static int compose(uint32_t *out, int width, int height, int native_x0, const uint32_t *native, void *user) {
     (void)user;
-    (void)native_x0;
+    if (s_rom_ok && ram(RAM_UPDATE_SELECT) == 0x20) return compose_title(out, width, height, native_x0, native);
     int tileset = ram(RAM_LEVEL_TILESET);
-    if (!s_rom_ok || tileset == 0 || tileset >= TILESET_COUNT || ram(RAM_LEVEL_7VERTICAL)) return 0;
+    if (!s_rom_ok || tileset >= TILESET_COUNT || ram(RAM_LEVEL_7VERTICAL)) return 0;
     if (!(cyc_render_line_mask(100) & 0x08) || cyc_render_line_bg_table(100) != 0) return 0;
     const uint8_t *layout = tile_layout(tileset);
     size_t wram_len = 0;
     const uint8_t *tile_mem = cyc_cart_ram(&wram_len);
     if (!layout || !tile_mem || wram_len < TILE_MEM_SCREEN * TILE_MEM_SCREENS) return 0;
 
+    /* The world map (Tile_Mem + $110, shown from the lower nametable) draws
+     * its status bar in the same nametable, so it ends where the stored rows
+     * do rather than at a scroll split. */
     int hud = hud_top();
+    bool split = hud < 240;
+    for (int y = 120; y < hud; y++)
+        if (cyc_render_line_scroll_y(y) >= TILE_MEM_ROWS * 16) { hud = y; break; }
     if (hud < 160) return 0; /* not the usual playfield/status-bar split */
-    decode_tiles();
+    (void)split;
+    decode_tiles(false);
 
     int cam = (ram(RAM_HORZ_SCROLL_HI) << 8) | ram(RAM_HORZ_SCROLL);
     int level_px = (ram(RAM_LEVEL_WIDTH) + 1) * 256;
     if (level_px > TILE_MEM_SCREENS * 256) level_px = TILE_MEM_SCREENS * 256;
+    if (tileset == 0 && level_px <= 256) return 0; /* World 1's framed one-screen map */
 
     /* Camera: centred on the native view, held at the level's ends. */
     int w0 = world_x(cyc_render_line_scroll_x(100), cam);
@@ -186,21 +260,12 @@ static int compose(uint32_t *out, int width, int height, int native_x0, const ui
     cyc_render_sprites(out, width, height, x0, s_opaque, NULL, NULL);
 
     /* Native playfield, minus the masked/garbled edge columns. */
-    for (int y = 0; y < hud; y++)
+    for (int y = 0; y < hud && !s_raw; y++)
         for (int x = 8; x < 248; x++) {
             int cx = x0 + x;
             if (cx >= 0 && cx < width) out[y * width + cx] = native[y * 256 + x];
         }
-    /* Status bar centred, its edge colours carried out to the sides (from
-     * inside the game's masked left 8 columns, which show only backdrop). */
-    int hx0 = (width - 256) / 2;
-    for (int y = hud; y < height; y++) {
-        uint32_t *line = out + y * width;
-        const uint32_t *src = native + y * 256;
-        for (int x = 0; x < hx0 + 8; x++) line[x] = src[8];
-        memcpy(line + hx0 + 8, src + 8, 248 * sizeof(uint32_t));
-        for (int x = hx0 + 256; x < width; x++) line[x] = src[255];
-    }
+    draw_hud(out, width, height, hud, native);
 
     if (s_check && (++s_frames == 1 || s_frames % 60 == 0)) {
         fprintf(stderr, "[smb3-ws] check: %llu/%llu background pixels differ (hud_top %d, view %d, level %dpx)\n",
@@ -237,5 +302,6 @@ int smb3_ws_mode(void) { return s_mode; }
 
 void smb3_ws_set_check(bool on) {
     s_check = on;
+    s_raw = on && getenv("SMB3_WS_RAW"); /* diagnostics: show the rebuilt view alone */
     apply();
 }
