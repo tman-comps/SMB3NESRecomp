@@ -30,16 +30,18 @@ palettes and the scroll the PPU actually used on each line. Where the original 2
 view and the rebuilt view overlap, the background matches the real PPU output
 pixel for pixel (`--widescreen-check` verifies this while playing).
 
-- The original picture stays authoritative in the middle, so game logic is untouched.
-  The extension is presentation only.
+- Sprites in the middle come from the original picture; background pixels come from the
+  exact rebuild. That also removes SMB3's right-edge colour glitch.
+- **Enemies live across the whole wide view.** They spawn and despawn at the wide edges,
+  and enemies outside the original 256 pixels are drawn by running their own sprite routine
+  in an isolated call, so their graphics and animation are the game's. Use
+  `--widescreen-enemies classic` to keep the original 4:3 spawn timing.
 - The camera holds at the start and end of a level instead of showing empty space.
-- The status bar stays centred.
-- The title screen, world maps and vertical levels fall back to centred 4:3, as does
-  anything else not yet supported.
-- SMB3's right-edge colour glitch is gone, because those columns come from the rebuilt view.
-
-Known limitation: enemies still spawn where the original game spawns them, just past the
-4:3 edge, so in wide view they can appear inside the margins. Wide-view spawning is next.
+- The status bar stays centred on black.
+- **Title screen:** the curtain and checkered floor extend, and the hills are mirrored outward.
+- **World maps:** maps that scroll show more of the map. World 1's single-screen map
+  keeps its framed 4:3 look.
+- Vertical levels and bonus-game screens still use centred 4:3 for now.
 
 ## Building (Windows)
 
