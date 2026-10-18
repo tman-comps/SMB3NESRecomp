@@ -43,5 +43,5 @@ nesrecomp_add_cycle_game(SuperMarioBros3Recomp
     GAME_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/game.toml"
     RECOMPILER "${NESRECOMP_HOST_COMPILER}"
     REGION NTSC
-    HOST_EXTRAS src/cycle_extras.c src/smb3_widescreen.c)
+    HOST_EXTRAS src/cycle_extras.c src/smb3_widescreen.c src/smb3_ws_objects.c)
 target_include_directories(SuperMarioBros3Recomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
