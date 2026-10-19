@@ -239,7 +239,7 @@ static void draw_hud(uint32_t *out, int width, int height, int hud, const uint32
         for (int x = 16; x < 256 && blank; x++)
             blank = src[x] == backdrop || (y < hud + 3 && (src[x] & 0xFFFFFFu) == 0);
         for (int x = 0; x < width; x++) line[x] = black;
-        if (!blank) memcpy(line + hx0 + 16, src + 16, 240 * sizeof(uint32_t));
+        if (!blank) memcpy(line + hx0 + 8, src + 8, 248 * sizeof(uint32_t));
     }
 }
 
