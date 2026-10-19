@@ -109,4 +109,5 @@ Code generation runs during configure. `build.ps1` wraps these steps.
 - [SDL2](https://www.libsdl.org/) for windowing, input and audio.
 
 *Super Mario Bros. 3* is © Nintendo. This project is not affiliated with or endorsed by Nintendo,
-and includes no Nintendo code or assets.
+and includes no Nintendo code. The launcher's box art (`art/boxart.tga`) is the original North
+American cover, © Nintendo, from a scan hosted on the [Super Mario Wiki](https://www.mariowiki.com/Gallery:Super_Mario_Bros._3).

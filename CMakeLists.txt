@@ -44,6 +44,7 @@ nesrecomp_add_cycle_game(SuperMarioBros3Recomp
     RECOMPILER "${NESRECOMP_HOST_COMPILER}"
     REGION NTSC
     MODS GAME_ID "super-mario-bros-3-usa"
+    BOXART "${CMAKE_CURRENT_SOURCE_DIR}/art/boxart.tga"
     HOST_EXTRAS src/cycle_extras.c src/smb3_widescreen.c src/smb3_ws_objects.c
         mods/widescreen_plugin.c)
 target_include_directories(SuperMarioBros3Recomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
