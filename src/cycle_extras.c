@@ -1,4 +1,7 @@
-/* The game's additions to the nesrecomp cycle host (cyc_host_extras.h). */
+/* The game's additions to the nesrecomp cycle host (cyc_host_extras.h).
+ * Widescreen's persistent settings live in the launcher's Mods screen
+ * (mods/widescreen_plugin.c); the in-game menu's View mode row switches it
+ * live, and the command-line options override both. */
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -6,6 +9,9 @@
 #include "cyc_host_extras.h"
 #include "cyc_video.h"
 #include "smb3_widescreen.h"
+
+/* recomp-ui's view modes: 0 native, 1 fixed 16:9, 2 adaptive. */
+enum { VIEW_NATIVE = 0, VIEW_16_9 = 1, VIEW_ADAPTIVE = 2 };
 
 static void power_on(void *ctx) {
     (void)ctx;
@@ -15,6 +21,19 @@ static void power_on(void *ctx) {
 static void frame_end(void *ctx) {
     (void)ctx;
     smb3_ws_frame_end();
+}
+
+static int get_view_mode(void *ctx) {
+    (void)ctx;
+    int m = smb3_ws_mode();
+    return m == NES_VIDEO_STOCK ? VIEW_NATIVE : m == NES_VIDEO_16_9 ? VIEW_16_9 : VIEW_ADAPTIVE;
+}
+
+static bool set_view_mode(void *ctx, int mode) {
+    (void)ctx;
+    if (mode < VIEW_NATIVE || mode > VIEW_ADAPTIVE) return false;
+    smb3_ws_set_mode(mode == VIEW_NATIVE ? NES_VIDEO_STOCK : mode == VIEW_16_9 ? NES_VIDEO_16_9 : NES_VIDEO_FIT);
+    return true;
 }
 
 static bool option(void *ctx, const char *name, const char *value) {
@@ -37,35 +56,21 @@ static bool option(void *ctx, const char *name, const char *value) {
     return false;
 }
 
-static void load_setting(void *ctx, const char *key, const char *value) {
-    (void)ctx;
-    int mode;
-    if (!strcmp(key, "Widescreen") && nes_video_geometry_parse(value, &mode)) smb3_ws_set_mode(mode);
-    if (!strcmp(key, "WidescreenEnemies")) smb3_ws_objects_set_wide(strcmp(value, "classic") != 0);
-}
-
-static void save_settings(void *ctx, FILE *f) {
-    (void)ctx;
-    fprintf(f, "Widescreen = %s\n", nes_video_geometry_name(smb3_ws_mode()));
-    fprintf(f, "WidescreenEnemies = %s\n", smb3_ws_objects_wide() ? "wide" : "classic");
-}
-
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
-        { "--widescreen", true, "fit|16:9|21:9|32:9|off (default fit)" },
-        { "--widescreen-enemies", true, "wide|classic: enemies live across the wide view (default) or the 4:3 one" },
+        { "--widescreen", true, "fit|16:9|21:9|32:9|off (overrides the Mods screen)" },
+        { "--widescreen-enemies", true, "wide|classic: enemies live across the wide view or the 4:3 one" },
         { "--widescreen-check", false, "report rebuilt-vs-PPU background mismatches" },
     };
     static const CycHostExtras x = {
         .power_on = power_on,
         .frame_end = frame_end,
+        .view_modes = (1u << VIEW_NATIVE) | (1u << VIEW_16_9) | (1u << VIEW_ADAPTIVE),
+        .get_view_mode = get_view_mode,
+        .set_view_mode = set_view_mode,
         .options = options,
         .option_count = sizeof options / sizeof options[0],
         .option = option,
-        .load_setting = load_setting,
-        .save_settings = save_settings,
     };
-    static bool defaulted;
-    if (!defaulted) { defaulted = true; smb3_ws_set_mode(NES_VIDEO_FIT); }
     return &x;
 }

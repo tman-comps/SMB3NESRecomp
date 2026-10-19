@@ -1,0 +1,58 @@
+format_version = 1
+id = "super-mario-bros-3.enhancement.widescreen"
+version = "1.0.0"
+name = "Widescreen"
+author = "SMB3NESRecomp"
+description = "Extends horizontal levels, scrolling world maps and the title screen beyond the original 4:3 picture. Presentation only; stock play keeps the original renderer and game logic."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "stock"
+
+[[target]]
+game_id = "super-mario-bros-3-usa"
+rom_crc32 = "2e6301ed" # Super Mario Bros. 3 (USA) (Rev 1), payload after the iNES header
+
+[[feature]]
+id = "widescreen"
+name = "Widescreen"
+description = "Show more of each level, world map and the title screen. Vertical levels and bonus games stay 4:3 for now."
+group = "Display"
+exclusive_group = "display-mode"
+default_enabled = true
+
+[[plugin]]
+feature = "widescreen"
+id = "super-mario-bros-3.widescreen"
+
+[[option]]
+feature = "widescreen"
+id = "aspect"
+label = "Aspect"
+type = "choice"
+default = "fit"
+
+[[option.choice]]
+value = "fit"
+label = "Fit window (adaptive)"
+[[option.choice]]
+value = "16-9"
+label = "16:9"
+[[option.choice]]
+value = "21-9"
+label = "21:9"
+[[option.choice]]
+value = "32-9"
+label = "32:9"
+
+[[option]]
+feature = "widescreen"
+id = "enemies"
+label = "Enemies"
+type = "choice"
+default = "wide"
+[[option.choice]]
+value = "wide"
+label = "Active across the wide view"
+[[option.choice]]
+value = "classic"
+label = "Original 4:3 timing"

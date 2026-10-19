@@ -43,5 +43,14 @@ nesrecomp_add_cycle_game(SuperMarioBros3Recomp
     GAME_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/game.toml"
     RECOMPILER "${NESRECOMP_HOST_COMPILER}"
     REGION NTSC
-    HOST_EXTRAS src/cycle_extras.c src/smb3_widescreen.c src/smb3_ws_objects.c)
+    MODS GAME_ID "super-mario-bros-3-usa"
+    HOST_EXTRAS src/cycle_extras.c src/smb3_widescreen.c src/smb3_ws_objects.c
+        mods/widescreen_plugin.c)
 target_include_directories(SuperMarioBros3Recomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+# The launcher's Mods screen reads packages from mods/ beside the executable.
+add_custom_command(TARGET SuperMarioBros3Recomp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/mods/preloaded"
+        "$<TARGET_FILE_DIR:SuperMarioBros3Recomp>/mods"
+    COMMENT "Staging the preloaded mod packages")

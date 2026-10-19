@@ -43,6 +43,27 @@ pixel for pixel (`--widescreen-check` verifies this while playing).
   keeps its framed 4:3 look.
 - Vertical levels and bonus-game screens still use centred 4:3 for now.
 
+## Controls
+
+Keyboard and controllers both work out of the box. Controllers are hot-pluggable, and every
+binding can be changed on the launcher's **Controls** page.
+
+| Action | Keyboard | Controller |
+|---|---|---|
+| Jump (NES A) | Z | A |
+| Run / fireball (NES B) | X | X |
+| Start / Select | Enter / Backslash | Start / Back |
+| Move | Arrow keys | D-pad or left stick |
+| In-game menu (settings, save/load state, view mode) | Esc | RB |
+| Fast-forward (hold) | Tab | RT |
+| Save / load state | F8 / F9 | via the menu |
+| Fullscreen | F11 | - |
+
+## Settings
+
+- **Launcher → Mods → Widescreen:** on/off, aspect (Fit / 16:9 / 21:9 / 32:9) and enemy timing.
+- **In-game menu → View mode:** switch between Native 4:3, 16:9 and Adaptive while playing.
+
 ## Building (Windows)
 
 Requirements: CMake 3.20+, Ninja, Python 3.11+ and a C11/C++17 compiler. The project is
