@@ -66,6 +66,9 @@ binding can be changed on the launcher's **Controls** page.
   lives and coins on screen (plus the P-meter while it charges and any held item cards), like
   modern 2D Mario games. It applies in levels only; maps keep the classic bar.
 - **In-game menu → View mode:** switch between Native 4:3, 16:9 and Adaptive while playing.
+- **Launcher → Mods → Quality of life → No slowdown** (on by default): gives the game extra CPU
+  time each frame, so busy scenes no longer slow down, while the picture and music keep their
+  normal pace. Turn it off for original timing.
 
 ## Building (Windows)
 

@@ -8,6 +8,8 @@
 
 #include "cyc_host_extras.h"
 #include "cyc_video.h"
+#include "smb1_port.h"
+#include "smb3_qol.h"
 #include "smb3_widescreen.h"
 
 /* recomp-ui's view modes: 0 native, 1 fixed 16:9, 2 adaptive. */
@@ -16,6 +18,7 @@ enum { VIEW_NATIVE = 0, VIEW_16_9 = 1, VIEW_ADAPTIVE = 2 };
 static void power_on(void *ctx) {
     (void)ctx;
     smb3_ws_power_on();
+    smb3_qol_power_on();
 }
 
 static void frame_end(void *ctx) {
@@ -54,6 +57,11 @@ static bool option(void *ctx, const char *name, const char *value) {
         smb3_ws_set_modern_hud(!strcmp(value, "modern"));
         return true;
     }
+    if (!strcmp(name, "--smb1-levels")) {
+        if (!value) return false;
+        smb1_levels_enable_from_path(value);
+        return true;
+    }
     if (!strcmp(name, "--widescreen-check")) {
         smb3_ws_set_check(true);
         return true;
@@ -67,6 +75,7 @@ const CycHostExtras *cyc_host_extras(void) {
         { "--widescreen-enemies", true, "wide|classic: enemies live across the wide view or the 4:3 one" },
         { "--widescreen-hud", true, "classic|modern: bottom status bar, or taller view with a corner HUD" },
         { "--widescreen-check", false, "report rebuilt-vs-PPU background mismatches" },
+        { "--smb1-levels", true, "Super Mario Bros. ROM: play its levels (overrides the Mods screen)" },
     };
     static const CycHostExtras x = {
         .power_on = power_on,

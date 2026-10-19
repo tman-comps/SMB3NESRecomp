@@ -1,0 +1,24 @@
+format_version = 1
+id = "super-mario-bros-3.enhancement.qol"
+version = "1.0.0"
+name = "Quality of life"
+author = "SMB3NESRecomp"
+description = "Optional conveniences that change nothing about levels or rules."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "stock"
+
+[[target]]
+game_id = "super-mario-bros-3-usa"
+rom_crc32 = "2e6301ed" # Super Mario Bros. 3 (USA) (Rev 1), payload after the iNES header
+
+[[feature]]
+id = "no_slowdown"
+name = "No slowdown"
+description = "Gives the game extra CPU time each frame (hidden scanlines before the next picture), so busy scenes no longer slow down. The picture and music keep their normal pace."
+group = "Gameplay"
+default_enabled = true
+
+[[plugin]]
+feature = "no_slowdown"
+id = "super-mario-bros-3.no-slowdown"
