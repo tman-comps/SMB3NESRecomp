@@ -49,6 +49,11 @@ static bool option(void *ctx, const char *name, const char *value) {
         smb3_ws_set_mode(mode);
         return true;
     }
+    if (!strcmp(name, "--widescreen-hud")) {
+        if (!value || (strcmp(value, "classic") && strcmp(value, "modern"))) return false;
+        smb3_ws_set_modern_hud(!strcmp(value, "modern"));
+        return true;
+    }
     if (!strcmp(name, "--widescreen-check")) {
         smb3_ws_set_check(true);
         return true;
@@ -60,6 +65,7 @@ const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
         { "--widescreen", true, "fit|16:9|21:9|32:9|off (overrides the Mods screen)" },
         { "--widescreen-enemies", true, "wide|classic: enemies live across the wide view or the 4:3 one" },
+        { "--widescreen-hud", true, "classic|modern: bottom status bar, or taller view with a corner HUD" },
         { "--widescreen-check", false, "report rebuilt-vs-PPU background mismatches" },
     };
     static const CycHostExtras x = {

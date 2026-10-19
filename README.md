@@ -61,7 +61,10 @@ binding can be changed on the launcher's **Controls** page.
 
 ## Settings
 
-- **Launcher → Mods → Widescreen:** on/off, aspect (Fit / 16:9 / 21:9 / 32:9) and enemy timing.
+- **Launcher → Mods → Widescreen:** on/off, aspect (Fit / 16:9 / 21:9 / 32:9), enemy timing,
+  and **Status bar: Classic / Modern**. Modern removes the bar for a taller view and draws just
+  lives and coins on screen (plus the P-meter while it charges and any held item cards), like
+  modern 2D Mario games. It applies in levels only; maps keep the classic bar.
 - **In-game menu → View mode:** switch between Native 4:3, 16:9 and Adaptive while playing.
 
 ## Building (Windows)

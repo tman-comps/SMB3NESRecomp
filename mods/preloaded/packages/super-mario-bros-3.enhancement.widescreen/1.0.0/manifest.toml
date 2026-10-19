@@ -46,6 +46,19 @@ label = "32:9"
 
 [[option]]
 feature = "widescreen"
+id = "hud"
+label = "Status bar"
+type = "choice"
+default = "classic"
+[[option.choice]]
+value = "classic"
+label = "Classic (bottom bar)"
+[[option.choice]]
+value = "modern"
+label = "Modern (taller view, lives/coins drawn on screen)"
+
+[[option]]
+feature = "widescreen"
 id = "enemies"
 label = "Enemies"
 type = "choice"

@@ -52,7 +52,7 @@
 #define TILESET_COUNT 19
 
 static int  s_mode = NES_VIDEO_STOCK;
-static bool s_rom_ok, s_check, s_raw;
+static bool s_rom_ok, s_check, s_raw, s_modern_hud;
 static uint8_t  s_opaque[CYC_VIDEO_MAX_WIDTH * 240];
 static uint8_t  s_pixels[256][8][8]; /* decoded BG tiles: 2-bit colour */
 static uint64_t s_frames, s_check_px, s_check_bad;
@@ -210,6 +210,160 @@ static int hud_top(void) {
     return 240;
 }
 
+/* The status bar's white top border: its artwork starts there. */
+static int hud_art_line(const uint32_t *native, int height, int hud) {
+    for (int art = hud; art < height && art < hud + 8; art++) {
+        int white = 0;
+        for (int x = 16; x < 256; x++) white += (native[art * 256 + x] & 0xFFFFFFu) == 0xFFFFFFu;
+        if (white >= 16) return art;
+    }
+    return hud;
+}
+
+/* ---- Modern HUD -------------------------------------------------------
+ * Wonder-style: no boxes, no score or timer. The values the status bar shows
+ * are cut from its live picture cell by cell (located through its nametable
+ * tiles), the box fill made transparent, and drawn onto the playfield with a
+ * dark outline: lives and coins top-left, the P-meter under them while it
+ * charges, held item cards top-right. */
+#define TILE_M0    0x74 /* Mario icon (Luigi: $76) */
+#define TILE_TIMES 0xFB
+#define TILE_COIN  0xEC
+#define TILE_PMT_ON  0xEE
+#define TILE_PMT_OFF 0xEF
+#define RAM_PLAYER_POWER    0x03DD
+#define RAM_INVENTORY_CARDS 0x7D9C
+
+typedef struct { int ntrow, y0; uint8_t tiles[32]; } HudRow;
+
+/* The nametable row shown on line y of the status bar, and the line its
+ * tiles start on. */
+static bool hud_row_at(int y, HudRow *r) {
+    int sy = cyc_render_line_scroll_y(y), sx = cyc_render_line_scroll_x(y);
+    if (sx & 7) return false;
+    uint16_t base = (uint16_t)(sy >= 240 ? 0x2800 : 0x2000);
+    r->ntrow = (sy % 240) / 8;
+    r->y0 = y - (sy % 8);
+    for (int c = 0; c < 32; c++) {
+        int col = (sx / 8 + c) & 63;
+        r->tiles[c] = cyc_render_nametable((uint16_t)(base + (col >= 32 ? 0x400 : 0) + r->ntrow * 32 + (col & 31)));
+    }
+    return true;
+}
+
+static int find_tile(const HudRow *r, uint8_t t, int from) {
+    for (int c = from; c < 32; c++)
+        if (r->tiles[c] == t) return c;
+    return -1;
+}
+
+/* Copy native cells [col, col+cols) x [y0, y0+rows*8) to (dx, dy), the box fill
+ * transparent. `tint` 0 keeps the cell's own colours; otherwise every glyph
+ * pixel takes it. Drawn pixels are marked for the outline pass. */
+static uint8_t s_hudmask[CYC_VIDEO_MAX_WIDTH * 240];
+static void hud_cells(uint32_t *out, int width, int height, const uint32_t *native, int col, int cols, int y0,
+                      int rows, int dx, int dy, uint32_t fill, uint32_t tint) {
+    for (int y = 0; y < rows * 8; y++)
+        for (int x = 0; x < cols * 8; x++) {
+            int sx = col * 8 + x, sy = y0 + y, ox = dx + x, oy = dy + y;
+            if (sx < 0 || sx >= 256 || sy < 0 || sy >= 240 || ox < 0 || ox >= width || oy < 0 || oy >= height) continue;
+            uint32_t c = native[sy * 256 + sx];
+            if (c == fill) continue;
+            out[oy * width + ox] = tint ? tint : c;
+            s_hudmask[oy * width + ox] = 1;
+        }
+}
+
+
+/* The box fill: the most common colour of a blank ($FE) status-bar cell. */
+static uint32_t hud_fill(const uint32_t *native, const HudRow *r) {
+    int c = find_tile(r, 0xFE, 2);
+    if (c < 0) return 0;
+    uint32_t best = 0;
+    int best_n = 0;
+    for (int i = 0; i < 64; i++) {
+        uint32_t v = native[(r->y0 + i / 8) * 256 + c * 8 + i % 8];
+        int n = 0;
+        for (int j = 0; j < 64; j++) n += native[(r->y0 + j / 8) * 256 + c * 8 + j % 8] == v;
+        if (n > best_n) { best_n = n; best = v; }
+    }
+    return best;
+}
+
+#define HUD_WHITE 0xFFFFFFFFu
+#define HUD_GOLD  0xFFFFC020u
+#define HUD_GRAY  0xFF808080u
+
+static int digits_width(const HudRow *r, int col) { return r->tiles[col] == 0xFE ? 1 : 2; }
+
+static void draw_floating_hud(uint32_t *out, int width, int height, int hud, const uint32_t *native) {
+    int art = hud_art_line(native, height, hud);
+    HudRow r1, r2;
+    int found = 0;
+    for (int y = art; y < height && found < 2; y++) {
+        HudRow r;
+        if (!hud_row_at(y, &r)) return;
+        if (found == 0 && find_tile(&r, TILE_COIN, 0) >= 0) { r1 = r; found = 1; y = r.y0 + 7; continue; }
+        if (found == 1 && r.ntrow == r1.ntrow + 1) { r2 = r; found = 2; }
+    }
+    if (found < 2) return;
+    int cm = find_tile(&r2, TILE_M0, 0);
+    if (cm < 0) cm = find_tile(&r2, TILE_M0 + 2, 0);
+    int cx = find_tile(&r2, TILE_TIMES, 0), cc = find_tile(&r1, TILE_COIN, 0);
+    int cp = find_tile(&r1, TILE_PMT_ON, 0);
+    if (cp < 0) cp = find_tile(&r1, TILE_PMT_OFF, 0);
+    if (cm < 0 || cx < 0 || cc < 0) return;
+    uint32_t fill = hud_fill(native, &r1);
+
+    memset(s_hudmask, 0, (size_t)width * (size_t)height);
+    const int m = 8, top = 8;
+    int x = m;
+    hud_cells(out, width, height, native, cm, 2, r2.y0, 1, x, top, fill, 0);                /* M */
+    x += 18;
+    /* Digits are already white with a black edge; "x" and the coin are
+     * one-colour glyphs, tinted. */
+    hud_cells(out, width, height, native, cx, 1, r2.y0, 1, x, top, fill, HUD_WHITE);        /* x */
+    x += 8;
+    int lw = digits_width(&r2, cx + 1), lc = cx + 1 + (lw == 1);
+    hud_cells(out, width, height, native, lc, lw, r2.y0, 1, x, top, fill, 0);               /* lives */
+    x += lw * 8 + 14;
+    hud_cells(out, width, height, native, cc, 1, r1.y0, 1, x, top, fill, HUD_GOLD);         /* $ */
+    x += 9;
+    int cw = digits_width(&r1, cc + 1), ccol = cc + 1 + (cw == 1); /* CoinH, CoinL follow the icon */
+    hud_cells(out, width, height, native, ccol, cw, r1.y0, 1, x, top, fill, 0);             /* coins */
+    if (cp >= 0 && ram(RAM_PLAYER_POWER)) {                                                  /* P-meter */
+        bool full = true;
+        for (int i = 0; i < 6; i++) {
+            bool lit = r1.tiles[cp + i] == TILE_PMT_ON;
+            full = full && lit;
+            hud_cells(out, width, height, native, cp + i, 1, r1.y0, 1, m + i * 8, top + 12, fill,
+                      lit ? HUD_WHITE : HUD_GRAY);
+        }
+        hud_cells(out, width, height, native, cp + 6, 2, r1.y0, 1, m + 50, top + 12, fill, full ? HUD_GOLD : HUD_GRAY);
+    }
+
+    /* Held item cards: the 16x16 picture in each of the three card boxes. */
+    int cards[3], nc = 0;
+    for (int i = 0; i < 3; i++)
+        if (ram((uint16_t)(RAM_INVENTORY_CARDS + i))) cards[nc++] = i;
+    int boxes[3], nb = 0;
+    for (int c = cc + 3; c < 31 && nb < 3; c++)
+        if (r1.tiles[c] == 0xA6 || r1.tiles[c] == 0xAA) boxes[nb++] = c + 1;
+    for (int k = 0; k < nc && cards[k] < nb; k++) {
+        int dx = width - m - (nc - k) * 18;
+        hud_cells(out, width, height, native, boxes[cards[k]], 2, r1.y0, 2, dx, top, fill, 0);
+    }
+
+    /* Dark outline around everything drawn. */
+    for (int y = 1; y < 48 && y < height - 1; y++)
+        for (int xx = 1; xx < width - 1; xx++) {
+            int i = y * width + xx;
+            if (s_hudmask[i]) continue;
+            if (s_hudmask[i - 1] || s_hudmask[i + 1] || s_hudmask[i - width] || s_hudmask[i + width])
+                out[i] = 0xFF000000u;
+        }
+}
+
 /* Status bar centred on black (its own surround colour). The line where the
  * IRQ switches to it renders backdrop only; wide, that reads as a stray band,
  * so a backdrop-only line there is black too. */
@@ -218,13 +372,7 @@ static void draw_hud(uint32_t *out, int width, int height, int hud, const uint32
     int hx0 = (width - 256) / 2;
     /* Lines between the split and the status bar's white top border are
      * blank by design; whatever the late IRQ leaked into them is dropped. */
-    int art = hud;
-    for (; art < height && art < hud + 8; art++) {
-        int white = 0;
-        for (int x = 16; x < 256; x++) white += (native[art * 256 + x] & 0xFFFFFFu) == 0xFFFFFFu;
-        if (white >= 16) break;
-    }
-    if (art >= hud + 8) art = hud;
+    int art = hud_art_line(native, height, hud);
     for (int y = hud; y < art; y++)
         for (int x = 0; x < width; x++) out[y * width + x] = black;
     for (int y = art; y < height; y++) {
@@ -333,18 +481,25 @@ static int compose(uint32_t *out, int width, int height, int native_x0, const ui
     decode_tiles();
     cyc_render_set_native_origin(x0);
 
+    /* Modern HUD (levels only): the playfield takes the whole picture, moved
+     * down by the status bar's height, and the rows above it come from the
+     * level rebuild. The status bar's panels then float in the corners. */
+    int dy = (s_modern_hud && f.tileset != 0) ? height - hud : 0;
+    int rows = dy ? height : hud;
     uint32_t backdrop = cyc_render_color(0);
-    for (int y = 0; y < hud; y++) {
-        int wx0 = world_x(cyc_render_line_scroll_x(y), cam) - x0;
-        int wy = cyc_render_line_scroll_y(y);
+    for (int cy = 0; cy < rows; cy++) {
+        int y = cy - dy; /* native line; negative above the original picture */
+        int src = y < 0 ? 0 : y;
+        int wx0 = world_x(cyc_render_line_scroll_x(src), cam) - x0;
+        int wy = cyc_render_line_scroll_y(src) + (y < 0 ? y : 0);
         int row = wy >> 4, py = wy & 15;
-        uint32_t *line = out + y * width;
-        uint8_t *cov = s_opaque + y * width;
+        uint32_t *line = out + cy * width;
+        uint8_t *cov = s_opaque + cy * width;
         for (int x = 0; x < width; x++) {
             int wx = wx0 + x;
             uint32_t color = backdrop;
             uint8_t opaque = 0;
-            if (wx >= 0 && wx < level_px && row < TILE_MEM_ROWS) {
+            if (wx >= 0 && wx < level_px && wy >= 0 && row < TILE_MEM_ROWS) {
                 int scr = wx >> 8, col = (wx >> 4) & 15, px = wx & 15;
                 uint8_t m = tile_mem[scr * TILE_MEM_SCREEN + row * 16 + col];
                 int quad = (px >> 3) * 2 + (py >> 3); /* UL, LL, UR, LR */
@@ -356,7 +511,7 @@ static int compose(uint32_t *out, int width, int height, int native_x0, const ui
             cov[x] = opaque;
         }
     }
-    for (int y = hud; y < height; y++) memset(s_opaque + y * width, 1, (size_t)width);
+    for (int y = rows; y < height; y++) memset(s_opaque + y * width, 1, (size_t)width);
 
     if (s_check) {
         static uint32_t bg[256 * 240];
@@ -366,7 +521,7 @@ static int compose(uint32_t *out, int width, int height, int native_x0, const ui
                     int cx = x0 + x;
                     if (cx < 0 || cx >= width) continue;
                     s_check_px++;
-                    s_check_bad += out[y * width + cx] != bg[y * 256 + x];
+                    s_check_bad += out[(y + dy) * width + cx] != bg[y * 256 + x];
                 }
         }
     }
@@ -378,9 +533,9 @@ static int compose(uint32_t *out, int width, int height, int native_x0, const ui
     for (int i = 0; i < 64; i++) {
         const uint8_t *s = oam + i * 4;
         if (s[0] >= 0xEF || (s[3] >= 8 && s[3] < 241)) continue;
-        smb3_ws_draw_sprite(out, width, height, x0 + s[3], s[0] + 1, s[1], s[2], s_opaque);
+        smb3_ws_draw_sprite(out, width, height, x0 + s[3], s[0] + 1 + dy, s[1], s[2], s_opaque);
     }
-    smb3_ws_objects_draw(out, width, height, view, s_opaque);
+    smb3_ws_objects_draw(out, width, height, view, dy, s_opaque);
 
     /* Native playfield, minus the masked/garbled edge columns. Where the
      * native pixel is plain background (it equals the sprite-free capture),
@@ -393,9 +548,10 @@ static int compose(uint32_t *out, int width, int height, int native_x0, const ui
             int cx = x0 + x;
             if (cx < 0 || cx >= width) continue;
             uint32_t n = native[y * 256 + x];
-            if (!have_bg || n != bgcap[y * 256 + x]) out[y * width + cx] = n;
+            if (!have_bg || n != bgcap[y * 256 + x]) out[(y + dy) * width + cx] = n;
         }
-    draw_hud(out, width, height, hud, native);
+    if (dy) draw_floating_hud(out, width, height, hud, native);
+    else draw_hud(out, width, height, hud, native);
 
     if (s_check && (++s_frames == 1 || s_frames % 60 == 0)) {
         fprintf(stderr, "[smb3-ws] check: %llu/%llu background pixels differ (hud_top %d, view %d, level %dpx)\n",
@@ -442,6 +598,9 @@ void smb3_ws_set_mode(int mode) {
 }
 
 int smb3_ws_mode(void) { return s_mode; }
+
+void smb3_ws_set_modern_hud(bool on) { s_modern_hud = on; }
+bool smb3_ws_modern_hud(void) { return s_modern_hud; }
 
 void smb3_ws_set_check(bool on) {
     s_check = on;

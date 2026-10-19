@@ -12,12 +12,15 @@
 static void reset_widescreen(void) {
     smb3_ws_set_mode(NES_VIDEO_STOCK);
     smb3_ws_objects_set_wide(true);
+    smb3_ws_set_modern_hud(false);
 }
 
 static void activate_widescreen(void) {
-    char aspect[16] = "fit", enemies[16] = "wide";
+    char aspect[16] = "fit", enemies[16] = "wide", hud[16] = "classic";
     nes_mod_option_value(PACKAGE, "widescreen", "aspect", aspect, sizeof aspect);
     nes_mod_option_value(PACKAGE, "widescreen", "enemies", enemies, sizeof enemies);
+    nes_mod_option_value(PACKAGE, "widescreen", "hud", hud, sizeof hud);
+    smb3_ws_set_modern_hud(!strcmp(hud, "modern"));
     int mode = !strcmp(aspect, "16-9")   ? NES_VIDEO_16_9
              : !strcmp(aspect, "21-9")   ? NES_VIDEO_21_9
              : !strcmp(aspect, "32-9")   ? NES_VIDEO_32_9

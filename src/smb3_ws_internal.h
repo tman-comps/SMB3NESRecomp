@@ -20,6 +20,7 @@ void smb3_ws_draw_sprite(uint32_t *out, int width, int height, int x, int y, uin
 
 void smb3_ws_objects_reset(void);
 void smb3_ws_objects_frame_end(const Smb3WsView *view);
-void smb3_ws_objects_draw(uint32_t *out, int width, int height, int view_left, const uint8_t *opaque);
+/* dy: canvas lines the playfield is moved down by (modern HUD). */
+void smb3_ws_objects_draw(uint32_t *out, int width, int height, int view_left, int dy, const uint8_t *opaque);
 void smb3_ws_objects_set_wide(bool wide);
 bool smb3_ws_objects_wide(void);
