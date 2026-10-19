@@ -8,6 +8,7 @@ typedef struct {
     int  width;       /* presented width */
     int  native_world;/* world X of native column 0 */
     int  view_left;   /* world X of canvas column 0 */
+    int  extra_top;   /* lines shown above the native picture (modern HUD) */
 } Smb3WsView;
 
 /* Start a picture's sprites: draw them in priority order afterwards (first

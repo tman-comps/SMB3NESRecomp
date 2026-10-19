@@ -572,6 +572,7 @@ void smb3_ws_frame_end(void) {
         v.width = width;
         v.native_world = f.w0;
         v.view_left = f.view;
+        v.extra_top = s_modern_hud ? 240 - f.hud : 0;
     }
     smb3_ws_objects_frame_end(&v);
 }
