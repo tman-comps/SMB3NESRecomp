@@ -8,3 +8,7 @@ saves/
 *.cycstate
 *.state
 config.ini
+
+# Python bytecode
+__pycache__/
+*.pyc

@@ -37,6 +37,20 @@ endif()
 
 include("${NESRECOMP_ROOT}/runner/cyc/project.cmake")
 
+set(SMB3_HOST_EXTRAS
+    src/cycle_extras.c src/smb3_widescreen.c src/smb3_ws_objects.c
+    mods/widescreen_plugin.c mods/qol_plugin.c)
+
+# Experimental Super Mario Bros. levels mod: built only when its sources are
+# present (not yet published).
+set(SMB3_SMB1_LEVELS OFF)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/smb1port/smb1_port.c")
+    set(SMB3_SMB1_LEVELS ON)
+    list(APPEND SMB3_HOST_EXTRAS
+        src/smb1port/smb1_cpu.c src/smb1port/smb1_levels.c src/smb1port/smb1_port.c
+        mods/smb1_levels_plugin.c)
+endif()
+
 # SMB3 is MMC3 (TSROM, mapper 4) with 8 KiB battery-less WRAM at $6000.
 nesrecomp_add_cycle_game(SuperMarioBros3Recomp
     ROM "${NESRECOMP_ROM}"
@@ -45,12 +59,12 @@ nesrecomp_add_cycle_game(SuperMarioBros3Recomp
     REGION NTSC
     MODS GAME_ID "super-mario-bros-3-usa"
     BOXART "${CMAKE_CURRENT_SOURCE_DIR}/art/boxart.tga"
-    HOST_EXTRAS src/cycle_extras.c src/smb3_widescreen.c src/smb3_ws_objects.c
-        mods/widescreen_plugin.c
-        src/smb1port/smb1_cpu.c src/smb1port/smb1_levels.c src/smb1port/smb1_port.c
-        mods/smb1_levels_plugin.c
-        mods/qol_plugin.c)
-target_include_directories(SuperMarioBros3Recomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/src/smb1port")
+    HOST_EXTRAS ${SMB3_HOST_EXTRAS})
+target_include_directories(SuperMarioBros3Recomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+if(SMB3_SMB1_LEVELS)
+    target_include_directories(SuperMarioBros3Recomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/smb1port")
+    target_compile_definitions(SuperMarioBros3Recomp PRIVATE SMB3_WITH_SMB1_LEVELS=1)
+endif()
 
 # The launcher's Mods screen reads packages from mods/ beside the executable.
 add_custom_command(TARGET SuperMarioBros3Recomp POST_BUILD

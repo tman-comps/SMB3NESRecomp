@@ -8,7 +8,9 @@
 
 #include "cyc_host_extras.h"
 #include "cyc_video.h"
+#ifdef SMB3_WITH_SMB1_LEVELS
 #include "smb1_port.h"
+#endif
 #include "smb3_qol.h"
 #include "smb3_widescreen.h"
 
@@ -57,11 +59,13 @@ static bool option(void *ctx, const char *name, const char *value) {
         smb3_ws_set_modern_hud(!strcmp(value, "modern"));
         return true;
     }
+#ifdef SMB3_WITH_SMB1_LEVELS
     if (!strcmp(name, "--smb1-levels")) {
         if (!value) return false;
         smb1_levels_enable_from_path(value);
         return true;
     }
+#endif
     if (!strcmp(name, "--widescreen-check")) {
         smb3_ws_set_check(true);
         return true;
@@ -75,7 +79,9 @@ const CycHostExtras *cyc_host_extras(void) {
         { "--widescreen-enemies", true, "wide|classic: enemies live across the wide view or the 4:3 one" },
         { "--widescreen-hud", true, "classic|modern: bottom status bar, or taller view with a corner HUD" },
         { "--widescreen-check", false, "report rebuilt-vs-PPU background mismatches" },
+#ifdef SMB3_WITH_SMB1_LEVELS
         { "--smb1-levels", true, "Super Mario Bros. ROM: play its levels (overrides the Mods screen)" },
+#endif
     };
     static const CycHostExtras x = {
         .power_on = power_on,
